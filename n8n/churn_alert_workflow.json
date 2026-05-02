@@ -1,0 +1,155 @@
+{
+  "name": "Churn Risk Günlük Uyarı Pipeline",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 8 * * 1-5"
+            }
+          ]
+        }
+      },
+      "id": "node-schedule",
+      "name": "Her Sabah 08:00 (Hafta içi)",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [240, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://localhost:8000/api/auth/login",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Content-Type", "value": "application/json" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\"username\": \"admin\", \"password\": \"admin123\"}"
+      },
+      "id": "node-login",
+      "name": "1. Login — JWT Al",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [460, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://localhost:8000/api/predictions/batch",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $json.access_token }}"
+            }
+          ]
+        }
+      },
+      "id": "node-batch",
+      "name": "2. Batch Predict — Tüm Çalışanlar",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [700, 300]
+    },
+    {
+      "parameters": {
+        "url": "http://localhost:8000/api/dashboard/high-risk?limit=20",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $('1. Login — JWT Al').item.json.access_token }}"
+            }
+          ]
+        }
+      },
+      "id": "node-highrisk",
+      "name": "3. Yüksek Riskli Çalışanları Getir",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [940, 300]
+    },
+    {
+      "parameters": {
+        "url": "http://localhost:8000/api/dashboard/kpis",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $('1. Login — JWT Al').item.json.access_token }}"
+            }
+          ]
+        }
+      },
+      "id": "node-kpis",
+      "name": "4. Dashboard KPI'larını Al",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [940, 480]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Yüksek riskli çalışanlardan özet rapor üret\nconst highRisk = $('3. Yüksek Riskli Çalışanları Getir').all();\nconst kpis = $('4. Dashboard KPI\\'larını Al').first().json;\nconst batchResult = $('2. Batch Predict — Tüm Çalışanlar').first().json;\nconst token = $('1. Login — JWT Al').first().json;\n\nconst employees = highRisk[0].json; // dizi\nconst topRisky = Array.isArray(employees)\n  ? employees.slice(0, 5)\n  : [];\n\nconst lines = topRisky.map((e, i) =>\n  `${i + 1}. ${e.full_name} (${e.department}) — %${(e.churn_prob * 100).toFixed(1)}`\n);\n\nconst report = [\n  `📊 GÜNLÜK CHURN RİSK RAPORU — ${new Date().toLocaleDateString('tr-TR')}`,\n  ``,\n  `Toplam Çalışan : ${kpis.total_employees}`,\n  `Yüksek Risk    : ${kpis.high_risk_count} çalışan`,\n  `Ort. Kıdem     : ${kpis.avg_tenure} yıl`,\n  `Genel Attrition: %${kpis.overall_attrition}`,\n  ``,\n  `🔴 En Riskli 5 Çalışan:`,\n  ...lines,\n  ``,\n  `✅ Batch Tahmin: ${batchResult.processed} başarılı / ${batchResult.failed} başarısız`,\n  ``,\n  `Detaylar için: http://localhost:5173`\n].join('\\n');\n\nreturn [{ json: { report, topRisky, kpis, batchResult } }];"
+      },
+      "id": "node-summary",
+      "name": "5. Rapor Oluştur",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1180, 380]
+    },
+    {
+      "parameters": {
+        "content": "=## Günlük Churn Raporu\n\n```\n{{ $json.report }}\n```",
+        "options": {}
+      },
+      "id": "node-note",
+      "name": "6. Raporu Logla (DEBUG)",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [1420, 380],
+      "notes": "Buraya e-posta, Slack veya webhook node ekleyebilirsin"
+    }
+  ],
+  "connections": {
+    "Her Sabah 08:00 (Hafta içi)": {
+      "main": [[{ "node": "1. Login — JWT Al", "type": "main", "index": 0 }]]
+    },
+    "1. Login — JWT Al": {
+      "main": [[{ "node": "2. Batch Predict — Tüm Çalışanlar", "type": "main", "index": 0 }]]
+    },
+    "2. Batch Predict — Tüm Çalışanlar": {
+      "main": [
+        [
+          { "node": "3. Yüksek Riskli Çalışanları Getir", "type": "main", "index": 0 },
+          { "node": "4. Dashboard KPI'larını Al", "type": "main", "index": 0 }
+        ]
+      ]
+    },
+    "3. Yüksek Riskli Çalışanları Getir": {
+      "main": [[{ "node": "5. Rapor Oluştur", "type": "main", "index": 0 }]]
+    },
+    "4. Dashboard KPI'larını Al": {
+      "main": [[{ "node": "5. Rapor Oluştur", "type": "main", "index": 1 }]]
+    },
+    "5. Rapor Oluştur": {
+      "main": [[{ "node": "6. Raporu Logla (DEBUG)", "type": "main", "index": 0 }]]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "tags": ["churn", "hr", "automation"],
+  "triggerCount": 1,
+  "updatedAt": "2026-04-27T00:00:00.000Z",
+  "versionId": "1"
+}

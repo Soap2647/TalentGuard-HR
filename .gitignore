@@ -1,0 +1,40 @@
+# Python
+__pycache__/
+*.py[cod]
+venv/
+.env
+*.egg-info/
+.pytest_cache/
+
+# Node
+node_modules/
+dist/
+.vite/
+
+# ML
+ml_models/
+*.joblib
+*.pkl
+
+# IDE / Editor / Assistants
+.vscode/
+.idea/
+*.swp
+.claude/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# Databases & Infrastructure
+pgdata/
+n8n/.n8n_data/
+n8n/.n8n_data /
+n8n/*_result.json
+n8n/*_start.json
+n8n/*_resp.json
+n8n/n8n_cookies.txt
+n8n/wf1_*.json

@@ -1,0 +1,120 @@
+{
+  "name": "Haftalık Model Retrain Pipeline",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 2 * * 0"
+            }
+          ]
+        }
+      },
+      "id": "node-schedule",
+      "name": "Her Pazar 02:00",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [240, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://localhost:8000/api/auth/login",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Content-Type", "value": "application/json" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\"username\": \"admin\", \"password\": \"admin123\"}"
+      },
+      "id": "node-login",
+      "name": "1. Login",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [460, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://localhost:8000/api/admin/models/retrain",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $json.access_token }}"
+            }
+          ]
+        }
+      },
+      "id": "node-retrain",
+      "name": "2. Modeli Yeniden Eğit",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [700, 300],
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "url": "http://localhost:8000/api/admin/models",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $('1. Login').item.json.access_token }}"
+            }
+          ]
+        }
+      },
+      "id": "node-models",
+      "name": "3. Model Listesini Getir",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [940, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "const models = $input.first().json;\nconst active = Array.isArray(models)\n  ? models.find(m => m.is_active)\n  : null;\n\nconst report = [\n  `🤖 HAFTALIK MODEL YENİLEME RAPORU`,\n  `Tarih: ${new Date().toLocaleDateString('tr-TR')}`,\n  ``,\n  active\n    ? [\n        `✅ Aktif Model: ${active.version}`,\n        `   Algoritma : ${active.algorithm}`,\n        `   ROC-AUC   : ${active.metrics?.roc_auc ?? '-'}`,\n        `   F1 Score  : ${active.metrics?.f1 ?? '-'}`,\n        `   Accuracy  : ${active.metrics?.accuracy ?? '-'}`,\n      ].join('\\n')\n    : '❌ Aktif model bulunamadı',\n  ``,\n  `Toplam kayıtlı model sayısı: ${Array.isArray(models) ? models.length : 0}`,\n].join('\\n');\n\nreturn [{ json: { report, activeModel: active } }];"
+      },
+      "id": "node-summary",
+      "name": "4. Rapor Oluştur",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1180, 300]
+    },
+    {
+      "parameters": {},
+      "id": "node-end",
+      "name": "5. Log (e-posta ekle)",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [1420, 300]
+    }
+  ],
+  "connections": {
+    "Her Pazar 02:00": {
+      "main": [[{ "node": "1. Login", "type": "main", "index": 0 }]]
+    },
+    "1. Login": {
+      "main": [[{ "node": "2. Modeli Yeniden Eğit", "type": "main", "index": 0 }]]
+    },
+    "2. Modeli Yeniden Eğit": {
+      "main": [[{ "node": "3. Model Listesini Getir", "type": "main", "index": 0 }]]
+    },
+    "3. Model Listesini Getir": {
+      "main": [[{ "node": "4. Rapor Oluştur", "type": "main", "index": 0 }]]
+    },
+    "4. Rapor Oluştur": {
+      "main": [[{ "node": "5. Log (e-posta ekle)", "type": "main", "index": 0 }]]
+    }
+  },
+  "settings": { "executionOrder": "v1" },
+  "tags": ["churn", "ml", "retrain"],
+  "triggerCount": 1
+}
