@@ -38,3 +38,6 @@ n8n/*_start.json
 n8n/*_resp.json
 n8n/n8n_cookies.txt
 n8n/wf1_*.json
+
+# Office lock files
+~$*
